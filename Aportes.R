@@ -1,58 +1,83 @@
-
+#****************************************************************************************************************
+#*****************************    ESTADÍSTICA ESPACIAL - KRIGING UNIVERSAL     **********************************
+#****************************************************************************************************************
 source("fun.R")
 
-# Carga e instalacion de paquetes ====
+# 0. Cargue de librerías ####
+#*********************************************
+load.lib("dplyr", "scales", "tidyr", "plotly", "rgeos", "sp", "maptools", "car", "geoR", 
+         "gstat", "stringr")
 
-load.lib("dplyr", "scales", "tidyr", "plotly")
-load.lib("rgeos","sp","maptools","car","geoR","gstat")
 
-# Carga base de datos
+# 1. Cargue información ####
+#*********************************************
+tipos<-c("factor", "character", "character", "character", "character", "character", "numeric",
+         "numeric", "numeric", "numeric", "numeric", "numeric", "character", "character", "numeric", "numeric")
 
-BD <- read.csv("BD.txt", sep = "\t", header = T, dec = ",")
+BD <- read.csv("BD.txt", sep = "\t", header = T, dec = ",", colClasses=tipos)
 str(BD)
+
+## corrige aportes
+BD$Aportes <- str_replace(BD$Aportes[1], ",", ".")
+BD$Aportes <- str_replace(BD$Aportes[1], "\\$ ", "")
 BD$Aportes <- as.numeric(BD$Aportes)
+
 head(BD)
 table(BD$Piramide.1)
 table(BD$Piramide.2_Actual)
 
-BD_2014 <- BD %>% filter( BD$AÑO == 2014 & BD$Piramide.2_Actual != "4.5 Transaccional"
-                          & BD$Piramide.2_Actual != "4.6 Transaccional - Facultativo" & BD$Piramide.2_Actual != "4.7 Transaccional - Independiente"
-                          & BD$Piramide.2_Actual != "4.8 Transaccional - Pensionado" & BD$Piramide.2_Actual != "4.9 Colsubsidio") %>%
-  select(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y, Aportes, Afiliados) %>%
-  group_by(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y) %>%
-  summarise(Aportes_total = sum(Aportes), Afiliados_max = max(Afiliados))
+BD_2014 <- BD %>% 
+           filter( BD$AÑO == 2014 & BD$Piramide.2_Actual != "4.5 Transaccional"& 
+                   BD$Piramide.2_Actual != "4.6 Transaccional - Facultativo" & 
+                   BD$Piramide.2_Actual != "4.7 Transaccional - Independiente"& 
+                   BD$Piramide.2_Actual != "4.8 Transaccional - Pensionado" & 
+                   BD$Piramide.2_Actual != "4.9 Colsubsidio") %>%
+           select(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y, Aportes, Afiliados) %>%
+           group_by(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y) %>%
+           summarise(Aportes_total = sum(Aportes, na.rm=T), Afiliados_max = max(Afiliados, na.rm=T))
 
-BD_2015 <- BD %>% filter( BD$AÑO == 2015 & BD$Piramide.2_Actual != "4.5 Transaccional"
-                          & BD$Piramide.2_Actual != "4.6 Transaccional - Facultativo" & BD$Piramide.2_Actual != "4.7 Transaccional - Independiente"
-                          & BD$Piramide.2_Actual != "4.8 Transaccional - Pensionado" & BD$Piramide.2_Actual != "4.9 Colsubsidio") %>% 
-  select(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y, Aportes, Afiliados) %>%
-  group_by(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y) %>%
-  summarise(Aportes_total = sum(Aportes), Afiliados_max = max(Afiliados))
+BD_2015 <- BD %>% 
+           filter( BD$AÑO == 2015 & BD$Piramide.2_Actual != "4.5 Transaccional" & 
+                   BD$Piramide.2_Actual != "4.6 Transaccional - Facultativo" & 
+                   BD$Piramide.2_Actual != "4.7 Transaccional - Independiente"& 
+                   BD$Piramide.2_Actual != "4.8 Transaccional - Pensionado" & 
+                   BD$Piramide.2_Actual != "4.9 Colsubsidio") %>% 
+            select(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y, Aportes, Afiliados) %>%
+            group_by(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y) %>%
+            summarise(Aportes_total = sum(Aportes, na.rm=T), Afiliados_max = max(Afiliados, na.rm=T))
 
-BD_2016 <- BD %>% filter( BD$AÑO == 2016 & BD$Piramide.2_Actual != "4.5 Transaccional"
-                          & BD$Piramide.2_Actual != "4.6 Transaccional - Facultativo" & BD$Piramide.2_Actual != "4.7 Transaccional - Independiente"
-                          & BD$Piramide.2_Actual != "4.8 Transaccional - Pensionado" & BD$Piramide.2_Actual != "4.9 Colsubsidio") %>% 
-  select(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y, Aportes, Afiliados) %>%
-  group_by(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y) %>%
-  summarise(Aportes_total = sum(Aportes), Afiliados_max = max(Afiliados))
+BD_2016 <- BD %>% 
+           filter( BD$AÑO == 2016 & BD$Piramide.2_Actual != "4.5 Transaccional" & 
+                   BD$Piramide.2_Actual != "4.6 Transaccional - Facultativo" & 
+                   BD$Piramide.2_Actual != "4.7 Transaccional - Independiente" & 
+                   BD$Piramide.2_Actual != "4.8 Transaccional - Pensionado" & 
+                   BD$Piramide.2_Actual != "4.9 Colsubsidio") %>% 
+           select(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y, Aportes, Afiliados) %>%
+           group_by(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y) %>%
+           summarise(Aportes_total = sum(Aportes, na.rm=T), Afiliados_max = max(Afiliados, na.rm=T))
 
-BD_2017 <- BD %>% filter( BD$AÑO == 2017 & BD$Piramide.2_Actual != "4.5 Transaccional"
-                          & BD$Piramide.2_Actual != "4.6 Transaccional - Facultativo" & BD$Piramide.2_Actual != "4.7 Transaccional - Independiente"
-                          & BD$Piramide.2_Actual != "4.8 Transaccional - Pensionado" & BD$Piramide.2_Actual != "4.9 Colsubsidio") %>% 
-  select(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y, Aportes, Afiliados) %>%
-  group_by(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y) %>%
-  summarise(Aportes_total = sum(Aportes), Afiliados_max = max(Afiliados)) %>% 
-  filter(ZONA == "ZONA CENTRO" | ZONA == "ZONA NORTE" | ZONA == "ZONA CHAPINERO" | ZONA == "ZONA SUR")
+BD_2017 <- BD %>% 
+           filter( BD$AÑO == 2017 & BD$Piramide.2_Actual != "4.5 Transaccional" & 
+                   BD$Piramide.2_Actual != "4.6 Transaccional - Facultativo" & 
+                   BD$Piramide.2_Actual != "4.7 Transaccional - Independiente" & 
+                   BD$Piramide.2_Actual != "4.8 Transaccional - Pensionado" & 
+                   BD$Piramide.2_Actual != "4.9 Colsubsidio") %>% 
+           select(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y, Aportes, Afiliados) %>%
+           group_by(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y) %>%
+           summarise(Aportes_total = sum(Aportes, na.rm=T), Afiliados_max = max(Afiliados, na.rm=T)) %>% 
+           filter(ZONA == "ZONA CENTRO" | ZONA == "ZONA NORTE" | ZONA == "ZONA CHAPINERO" | ZONA == "ZONA SUR")
 
 table(BD_2017$ZONA)
-# Mapas
 
+
+# 2. Mapas ####
+#*********************************************
 bogota = readShapePoly("./barrios_catastrales/barrios_catastrales.shp")
 xy = SpatialPoints(BD_2017[c("X", "Y")])	# Puntos Empresas
 
-##################################################################
-############ 			Análisis gráfico			##############
-##################################################################
+#*********************************************
+#	Análisis gráfio
+#*********************************************
 
 plot(bogota)
 plot(xy)
