@@ -1,0 +1,16 @@
+# History files
+.Rhistory
+
+# function libraries
+fun.R
+
+# RStudio files
+.Rproj.user/
+*.Rproj
+
+# Temporary files created by R markdown
+*.utf8.md
+*.knit.md
+
+# Data
+BD.txt
