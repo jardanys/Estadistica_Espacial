@@ -2,11 +2,12 @@
 #*****************************    ESTADÍSTICA ESPACIAL - KRIGING UNIVERSAL     **********************************
 #****************************************************************************************************************
 source("fun.R")
+options(scipen=999)
 
 # 0. Cargue de librerías ####
 #*********************************************
 load.lib("dplyr", "scales", "tidyr", "plotly", "rgeos", "sp", "maptools", "car", "geoR", 
-         "gstat", "stringr")
+         "gstat", "stringr", "reshape2")
 
 
 # 1. Cargue información ####
@@ -18,13 +19,28 @@ BD <- read.csv("BD.txt", sep = "\t", header = T, dec = ",", colClasses=tipos)
 str(BD)
 
 ## corrige aportes
-BD$Aportes <- str_replace(BD$Aportes[1], ",", ".")
-BD$Aportes <- str_replace(BD$Aportes[1], "\\$ ", "")
+BD$Aportes <- str_replace(BD$Aportes, ",", ".")
+BD$Aportes <- str_replace(BD$Aportes, "\\$ ", "")
 BD$Aportes <- as.numeric(BD$Aportes)
 
-head(BD)
+head(BD$Aportes)
+a <- BD %>% filter(AÑO == 2017) 
+sum(a$Aportes)
+sum(BD$Aportes, na.rm=T)
+
+head(a)
+table(a$Piramide.1)
+barplot(table(a$Piramide.2_Actual))
+
+suma <- a %>% select(Piramide.2_Actual, Aportes) %>% group_by(Piramide.2_Actual) %>% 
+  summarise(Aportes_total = sum(Aportes, na.rm=T))
+
+suma
+
 table(BD$Piramide.1)
+barplot(table(BD$Piramide.1))
 table(BD$Piramide.2_Actual)
+barplot(table(BD$Piramide.2_Actual))
 
 BD_2014 <- BD %>% 
            filter( BD$AÑO == 2014 & BD$Piramide.2_Actual != "4.5 Transaccional"& 
@@ -61,14 +77,29 @@ BD_2017 <- BD %>%
                    BD$Piramide.2_Actual != "4.6 Transaccional - Facultativo" & 
                    BD$Piramide.2_Actual != "4.7 Transaccional - Independiente" & 
                    BD$Piramide.2_Actual != "4.8 Transaccional - Pensionado" & 
-                   BD$Piramide.2_Actual != "4.9 Colsubsidio") %>% 
+                   BD$Piramide.2_Actual != "4.9 Colsubsidio" &
+                   BD$Piramide.2_Actual !=  "4.3 Trans.Juridica Ent. 11 a 99 Trab." &
+                   BD$Piramide.2_Actual != "4.4 Trans.Natural Ent. 11 a 99 Trab.") %>% 
            select(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y, Aportes, Afiliados) %>%
            group_by(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y) %>%
            summarise(Aportes_total = sum(Aportes, na.rm=T), Afiliados_max = max(Afiliados, na.rm=T)) %>% 
            filter(ZONA == "ZONA CENTRO" | ZONA == "ZONA NORTE" | ZONA == "ZONA CHAPINERO" | ZONA == "ZONA SUR")
 
-table(BD_2017$ZONA)
+barplot(table(BD_2017$ZONA))
+barplot(table(BD_2017$Piramide.1))
+barplot(table(BD_2017$Piramide.2_Actual))
+table(BD_2017$Piramide.2_Actual)
 
+head(BD_2017)
+colSums(BD_2017[8])
+
+Aportes <- BD_2017 %>% select(Piramide.2_Actual, Aportes_total) %>% group_by(Piramide.2_Actual) %>% 
+  summarise(Aportes = sum(Aportes_total))
+
+plot(Aportes$Aportes)
+
+Aportes
+table(BD_2017$Piramide.2_Actual)
 
 # 2. Mapas ####
 #*********************************************
