@@ -23,25 +23,6 @@ BD$Aportes <- str_replace(BD$Aportes, ",", ".")
 BD$Aportes <- str_replace(BD$Aportes, "\\$ ", "")
 BD$Aportes <- as.numeric(BD$Aportes)
 
-head(BD$Aportes)
-a <- BD %>% filter(AÑO == 2017) 
-sum(a$Aportes)
-sum(BD$Aportes, na.rm=T)
-
-head(a)
-table(a$Piramide.1)
-barplot(table(a$Piramide.2_Actual))
-
-suma <- a %>% select(Piramide.2_Actual, Aportes) %>% group_by(Piramide.2_Actual) %>% 
-  summarise(Aportes_total = sum(Aportes, na.rm=T))
-
-suma
-
-table(BD$Piramide.1)
-barplot(table(BD$Piramide.1))
-table(BD$Piramide.2_Actual)
-barplot(table(BD$Piramide.2_Actual))
-
 BD_2014 <- BD %>% 
            filter( BD$AÑO == 2014 & BD$Piramide.2_Actual != "4.5 Transaccional"& 
                    BD$Piramide.2_Actual != "4.6 Transaccional - Facultativo" & 
@@ -85,75 +66,73 @@ BD_2017 <- BD %>%
            summarise(Aportes_total = sum(Aportes, na.rm=T), Afiliados_max = max(Afiliados, na.rm=T)) %>% 
            filter(ZONA == "ZONA CENTRO" | ZONA == "ZONA NORTE" | ZONA == "ZONA CHAPINERO" | ZONA == "ZONA SUR")
 
-barplot(table(BD_2017$ZONA))
-barplot(table(BD_2017$Piramide.1))
-barplot(table(BD_2017$Piramide.2_Actual))
-table(BD_2017$Piramide.2_Actual)
-
-head(BD_2017)
-colSums(BD_2017[8])
-
-Aportes <- BD_2017 %>% select(Piramide.2_Actual, Aportes_total) %>% group_by(Piramide.2_Actual) %>% 
-  summarise(Aportes = sum(Aportes_total))
-
-plot(Aportes$Aportes)
-
-Aportes
-table(BD_2017$Piramide.2_Actual)
+BD_2017$Y <- ifelse(BD_2017$Y>1000000, 4.7316250, BD_2017$Y)
 
 # 2. Mapas ####
 #*********************************************
-bogota = readShapePoly("./barrios_catastrales/barrios_catastrales.shp")
+bogota = readShapePoly("./localidades/localidades_WGS84.shp")
 xy = SpatialPoints(BD_2017[c("X", "Y")])	# Puntos Empresas
 
-#*********************************************
-#	Análisis gráfio
+#	3. Análisis gráfio
 #*********************************************
 
+par(mfrow=c(1,1))
 plot(bogota)
 plot(xy)
 points(xy, pch = 3, cex = 0.3, col = "red")
 
 library(leaflet)
-
-BD_2017$Y <- ifelse(BD_2017$Y>1000000, 4.7316250, BD_2017$Y)
-
 map <- leaflet(data=BD_2017) %>%
   addTiles() %>% 
-  addProviderTiles(providers$OpenStreetMap.BlackAndWhite) %>% 
   addCircleMarkers(lng =~X, lat =~Y, popup="The birthplace of R")
 
 map
 
-#Análisis descriptivo para la precipitación
+#Análisis descriptivo para los aportes
 par(mfrow = c(1, 3))
 hist(BD_2017$Aportes_total, freq = FALSE, main = "", xlab = "Aportes", ylab = "Frecuencia")
 curve(dnorm(x, mean(BD_2017$Aportes_total), sd(BD_2017$Aportes_total)), add = T)
 boxplot(BD_2017$Aportes_total)
 qqPlot(BD_2017$Aportes_total, ylab = "Aportes")
 title(main=list("Gráficos descriptivos para los aportes", cex=2,col="black", font=3), outer=T,line=-2)
+par(mfrow=c(1,1))
 
-limites=c(min(BD_2017$Aportes_total), quantile(BD_2017$Aportes_total, probs = c(0.2, 0.4, 0.6, 0.8),type = 5), max(BD_2017$Aportes_total))
+limites <- c(min(BD_2017$Aportes_total), quantile(BD_2017$Aportes_total, probs = c(0.2, 0.4, 0.6, 0.8),type = 5), max(BD_2017$Aportes_total))
+limites
 
-##################################################################
-############ 		Análisis de estacionariedad		##############
-##################################################################
+
+BD_2017$D_Aportes_75 <- ifelse(BD_2017$Aportes_total > quantile(BD_2017$Aportes_total, probs=0.75) &
+                                 BD_2017$Aportes_total <= quantile(BD_2017$Aportes_total, probs=0.9), 1, 0)
+BD_2017$D_Aportes_90 <- ifelse(BD_2017$Aportes_total > quantile(BD_2017$Aportes_total, probs=0.90) &
+                                 BD_2017$Aportes_total <= quantile(BD_2017$Aportes_total, probs=0.99), 1, 0)
+BD_2017$D_Aportes_99 <- ifelse(BD_2017$Aportes_total > quantile(BD_2017$Aportes_total, probs=0.99), 1, 0)
+
+head(BD_2017)
+
+# BD_2017sp <- BD_2017
+# coordinates(BD_2017sp) = ~X+Y
+# spplot(BD_2017sp, "Aportes", cuts = limites)
+
+
+# 4. Análisis de estacionariedad		####
+#******************************************************************
 
 #Gráficos contra las direcciones
 scatterplot(Aportes_total~X, reg.line=lm, smooth=TRUE, spread=TRUE, boxplots=FALSE, span=0.5, data=BD_2017)
-scatterplot(Aportes_total~X, reg.line=lm, smooth=TRUE, spread=TRUE, boxplots=FALSE, span=0.5, data=BD_2017)
+scatterplot(Aportes_total~Y, reg.line=lm, smooth=TRUE, spread=TRUE, boxplots=FALSE, span=0.5, data=BD_2017)
 
-# Al parecer, la media de la precipitación no es constante sobre la región de observacion, luego el proceso no es estacionario
-# Es necesario remover esta dependencia
+# Al parecer, la media es constante
+# Es necesario remover esta dependencia?
 
 # Una alternativa es utilizar un modelo en términos de las direcciones
 # Utilizo un modelo cuadrático en las direcciones con un stepwise
-modelo1 = lm(Aportes_total ~ X + Y + I(X * Y) + I(X^2) + I(Y^2), data = BD_2017)
+modelo1 = lm(Aportes_total ~ X + Y + I(X*Y) + I(X^2) + I(Y^2) + D_Aportes_75 + D_Aportes_90 + D_Aportes_99, data = BD_2017)
 summary(modelo1)
 step(modelo1)
 
+
 #Ajuste del modelo seleccionado
-modelo2 = lm(Aportes_total ~ Y + I(Y^2) , data = BD_2017)
+modelo2 = lm(Aportes_total ~ Y + I(X * Y) + I(Y^2) + D1_Aportes, data = BD_2017)
 anova(modelo2)
 summary(modelo2)
 
@@ -250,8 +229,10 @@ class(mod1_1)
 coordinates(BD_2017) = ~X+Y
 spplot(BD_2017, "Aportes_total", cuts = limites)
 
-kr <- krige.cv(Aportes_total ~ X + Y + I(X*Y) + I(X^2) , BD_2017,  mod1_1, maxdist = 125000)
+kr <- krige.cv(Aportes_total ~ X + Y + I(X*Y) + I(X^2) , BD_2017, maxdist = 125000)
 head(kr)
+kr$residual <- ifelse(is.na(kr$residual),0,kr$residual)
+kr$observed <- ifelse(is.na(kr$observed),0,kr$observed)
 mape=mean(abs(kr$residual)/kr$observed)
 mape
 
@@ -286,8 +267,8 @@ gridded(muestra1) = c("x", "y")
 plot(muestra)
 
 #Para cuadricular la muestra generada! porque se ha generado de forma regular
+krig_u=krige(formula = Aportes_total ~ X+Y+I(X*Y)+I(X^2),BD_2017,muestra1)
 
-krig_u=krige(formula=Aportes_total ~ X+Y+I(X*Y)+I(X^2),BD_2017,muestra1,model=mod1_1)
 #kriging universal sobre la precipitación.
 head(krig_u$var1.pred)
 head(krig_u$var1.var)
