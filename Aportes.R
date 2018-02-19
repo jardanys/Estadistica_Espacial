@@ -8,7 +8,7 @@ options(scipen=999)
 #*********************************************
 load.lib("dplyr", "scales", "tidyr", "plotly", "rgeos", "sp", "maptools", "car", "geoR", 
          "gstat", "stringr", "reshape2")
-
+load.lib("rgeos","sp","maptools","car","geoR","gstat","RColorBrewer")
 
 # 1. Cargue información ####
 #*********************************************
@@ -114,181 +114,228 @@ head(BD_2017)
 # spplot(BD_2017sp, "Aportes", cuts = limites)
 
 
-# 4. Análisis de estacionariedad		####
+## 3.1 Interpolación áreas - prueba ####
 #******************************************************************
 
-#Gráficos contra las direcciones
+datos=data.frame(BD_2017$X, BD_2017$Y, BD_2017$Aportes_total)
+geo = as.geodata(datos, coords.col = 1:2, data.col = 3)
+
+matriz = matrix(c(BD_2017$X,BD_2017$Y),ncol=2)
+sp2 = SpatialPoints(matriz)
+
+#Georeferenciacion de los puntos de ubicaci?n
+plot(sp2)
+#Generación de las coordenadas donde se va a interpolar
+muestra = spsample(sp2,n=100000, type="regular")
+plot(muestra)
+
+KC1=krige.control(cov.model="spherical",type="OK",cov.pars=c(23,846),nugget=0)
+resultado=krige.conv(geo,locations = data.frame(muestra),krige=KC1)
+
+#Grafico de la interpolacion
+image(resultado, main="Estimaciones por kriging",col=brewer.pal(9, "Blues"),axes=T,xlab="",ylab="")
+contour(resultado,add=T)
+
+## Varianza de predicción, valores rojos son varianzas mas pequeñas que las amarillas
+image(resultado, val=sqrt(resultado$krige.var),axes =FALSE,xlab="",ylab="")
+
+
+# 4. Aportes Bogotá D.C. - Geoestaditica ####
+#*******************************************************************
+
+bogota <- readShapePoly("./localidades/localidades_WGS84.shp")
+xy = SpatialPoints(BD_2017[c("X", "Y")])	#Puntos de las empresas
+
+## 4.1. Graficas descriptivas ####
+#*******************************************************************
+
+#Gráfico de la capa y las ubicaciones de las empresas
+plot(bogota)
+points(xy, pch = 3, cex = 0.3, col = "red")
+title(main="Empresas Aportes Bogota")
+
+#Análisis descriptivo para los aportes
+par(mfrow = c(1, 3))
+hist(BD_2017$Aportes_total, freq = FALSE, main = "", xlab = "Aportes", ylab = "Frecuencia")
+curve(dnorm(x, mean(BD_2017$Aportes_total), sd(BD_2017$Aportes_total)), add = T)
+boxplot(BD_2017$Aportes_total)
+qqPlot(BD_2017$Aportes_total, ylab = "Aportes")
+title(main=list("Gráficos descriptivos para los Aportes", cex=2,col="black", font=3), outer=T,line=-2)
+# Como hay atipico, podría usarse una transformación box cox para reducir su efecto en los resultados y análisis
+
+# el gráfico para determinar estacionariedad. Aquí NO Estacionaria porque los punticos no están formados aleatoriamente
+datossp <- (BD_2017)
+coordinates(datossp) = ~X+Y
+spplot(datossp, "Aportes_total", cuts = limites)
+#Existe dependencia espacial!!!! porque los puntos de valores similares "estan cerca"...
+# para esto se realizan las siguientes pruebas
+
+
+## 4.2. Estacionariedad ####
+#************************************************************************
+
+# Gráficos contra las direcciones
 scatterplot(Aportes_total~X, reg.line=lm, smooth=TRUE, spread=TRUE, boxplots=FALSE, span=0.5, data=BD_2017)
 scatterplot(Aportes_total~Y, reg.line=lm, smooth=TRUE, spread=TRUE, boxplots=FALSE, span=0.5, data=BD_2017)
 
-# Al parecer, la media es constante
-# Es necesario remover esta dependencia?
+# Al parecer son constante pero existen varios puntos fuera
 
-# Una alternativa es utilizar un modelo en términos de las direcciones
-# Utilizo un modelo cuadrático en las direcciones con un stepwise
-modelo1 = lm(Aportes_total ~ X + Y + I(X*Y) + I(X^2) + I(Y^2) + D_Aportes_75 + D_Aportes_90 + D_Aportes_99, data = BD_2017)
+# Se realiza un modelo en términos de las direcciónes con un stepwise
+modelo1 = lm(Aportes_total ~ X + Y + I(X * Y) + I(X^2) + I(Y^2), data = BD_2017)
 summary(modelo1)
 step(modelo1)
+summary(step(modelo1))
+# El resultado es que si existe dependencia porque las X y Y son significativas, es decir, no es estacionario.
 
-
-#Ajuste del modelo seleccionado
-modelo2 = lm(Aportes_total ~ Y + I(X * Y) + I(Y^2) + D1_Aportes, data = BD_2017)
-anova(modelo2)
+# Ajuste del modelo
+modelo2 = lm(Aportes_total ~ X + Y + I(X * Y) + I(Y^2), data = BD_2017)
 summary(modelo2)
+step(modelo2)
+summary(step(modelo2))
 
-#Gráficos sobre los residuales del modelo ajustado
+# Gráficos sobre los residuales del modelo ajustado
 par(mfrow = c(1, 3))
 hist(modelo2$res, freq = FALSE, main = "", xlab = "Residuales", ylab = "Frecuencia")
 curve(dnorm(x, mean(modelo2$res), sd(modelo2$res)), add = T)
 boxplot(modelo2$res)
 qqPlot(modelo2$res, ylab = "Precipitacion")
-#Los residuales no siguen una distribución normal, pero no es necesario, solo que sean estacionarios.
+# Los residuales no siguen una distribución normal, pero no es necesario, solo que sean estacionarios.
 
-#Para revisar si los residuales del modelo dependen de la dirección, 
-#se ajusta un modelo de segundo orrden sobre los residuales.
+# Para revisar si los residuales del modelo dependen de la dirección, 
+# se ajusta un modelo de segundo orden sobre los residuales.
 
-modelo3=lm(modelo2$res ~ X + Y + I(X * Y) + I(X^2) + I(Y^2), data = BD_2017)
+modelo3 <- lm(modelo2$res ~ X + Y + I(X * Y) + I(X^2) + I(Y^2), data = BD_2017)
 summary(modelo3)
 
-#se verifica que los residuales son estacionarios!
-#Gráficos contra las direcciones para los residuales
+# Como no son significativos los X y Y, quiere decir que los residuos son estacionarios 
 
-scatterplot(modelo2$res~X, reg.line=lm, smooth=TRUE, spread=TRUE, boxplots=FALSE, span=0.5, data=BD_2017)
-scatterplot(modelo2$res~Y, reg.line=lm, smooth=TRUE, spread=TRUE, boxplots=FALSE, span=0.5, data=BD_2017)
-
-
+# Gráficos contra las direcciones para los residuales (Solo es informativo y de exploración)
+scatterplot(modelo2$res ~ X, reg.line=lm, smooth=TRUE, spread=TRUE, boxplots=FALSE, span=0.5, data=BD_2017)
+scatterplot(modelo2$res ~ Y, reg.line=lm, smooth=TRUE, spread=TRUE, boxplots=FALSE, span=0.5, data=BD_2017)
 
 
-##################################################################
-############ 			Modelo a sentimiento		##############
-##################################################################
+## 4.3. Análisis modelo semivarianza ####
+#********************************************************************************
+
 # Ahora, se construye el semivariograma sobre los residuales del modelo ajustado
-datos2=data.frame(x=BD_2017$X,y=BD_2017$Y,res=modelo2$res)
+datos2 <- data.frame(x = BD_2017$X, y = BD_2017$Y, res=modelo2$res)
+head(datos2)
 
 # Creando objeto de tipo geodata para el calculo del semivariograma
-geo = as.geodata(datos2, coords.col = 1:2, data.col = 3)
-#variog para estimar semivariograma
-var = variog(geo, max.dist = 125000,direction = "omnidirectional")
+geo <- as.geodata(datos2, coords.col = 1:2, data.col = 3)
+
+# variog para estimar semivariograma
+var <- variog(geo, max.dist = 1000,direction = "omnidirectional")
 par(mfrow=c(1,1))
 plot(var)
-#Ajuste de modelos al semivariograma
-#Aca se puede "jugar" con varios ajustes
-ev=eyefit(var)
+
+# Ajuste de modelos al semivariograma
+# Se puede con varios ajustes
+ev <- eyefit(var)
 ev
 
-##################################################################
-############ 			Ajuste de modelos			##############
-##################################################################
-
-#Estimacion del modelo de semivarianza
-#Asignando valores iniciales
-mod1=variofit(var,ini=ev,weights="equal")
+mod1 <- variofit(var,ini=ev,weights="equal")
 mod1
 
-#Minimos cuadrados ponderados
-mod2=variofit(var,ini=ev,weights="npairs")
+# Minimos cuadrados ponderados
+mod2 <- variofit(var,ini=ev,weights="npairs")
 mod2
 
-#Minimos cuadrados ponderados
-mod3=variofit(var,ini=ev,weights="cressie")
+# Minimos cuadrados ponderados
+mod3 <- variofit(var,ini=ev,weights="cressie")
 mod3
 
-
+# Graficas
 plot(var)
-ev=eyefit(var)
 lines(mod1, max.dist = 125000, col = 1)
 lines(mod2, max.dist = 125000, col = 2)
 lines(mod3, max.dist = 125000, col = 3)
 legend("bottomright",legend = c("MCO", "MCP - npairs", "MCP - cressie"),
        col = 1:5, lwd = 2, inset = .03)
 
-##################################################################
-############ 			Validación cruzada			##############
-###########       con kriging ordinario   ##############
-###########       sobre los residuales    ##############
-##################################################################
 
-cruzada1=xvalid(geo,model=mod1,reestimate = F)
-cruzada2=xvalid(geo,model=mod2,reestimate = F)
-cruzada3=xvalid(geo,model=mod3,reestimate = F)
+## 4.4. Validación Cruzada ####
+#***************************************************************************
 
-sqrt(mean(cruzada1$error^2))
-sqrt(mean(cruzada2$error^2))
-sqrt(mean(cruzada3$error^2))
+# Validación cruzada sobre los residuales
+
+#cruzada1=xvalid(geo,model=mod1,reestimate = F)
+#cruzada2=xvalid(geo,model=mod2,reestimate = F)
+#cruzada3=xvalid(geo,model=mod3,reestimate = F)
+
+#sqrt(mean(cruzada1$error^2))
+#sqrt(mean(cruzada2$error^2))
+#sqrt(mean(cruzada3$error^2))
 
 # Aqui arriba se está haciendo validación cruzada sobre los residuales
 # Lo ideal es hacer validación cruzada para la precipitación directamente
 # Para hacer esto es conveniente cambiar de paquete, de geoR a gstat
 # Se crea un objeto de tipo gstat para utilizarlo en el kriging
-mod1_1 <- as.vgm.variomodel(mod2)
-class(mod2)
+
+# Como todos los modelos de la varianza dan muy parecidos se deja solo uno
+
+mod1_1 <- as.vgm.variomodel(mod1)
+class(mod1)
 class(mod1_1)
-# mod1 es el modelo en la libreria geoR
-# mod1_1 es el mismo modelo pero de la libreria gstat
 
-coordinates(BD_2017) = ~X+Y
-spplot(BD_2017, "Aportes_total", cuts = limites)
-
-kr <- krige.cv(Aportes_total ~ X + Y + I(X*Y) + I(X^2) , BD_2017, maxdist = 125000)
+kr <- krige.cv(Aportes_total ~ X+Y+I(X*Y)+I(X^2) , datossp, mod1_1, maxdist = 100)
 head(kr)
-kr$residual <- ifelse(is.na(kr$residual),0,kr$residual)
-kr$observed <- ifelse(is.na(kr$observed),0,kr$observed)
 mape=mean(abs(kr$residual)/kr$observed)
 mape
 
-#Se repite el proceso para los otros modelos candidatos
-mod2_1 <- as.vgm.variomodel(mod2)
-kr <- krige.cv(prec ~x+y+I(x*y)+I(x^2) , datossp,  mod2_1, maxdist = 125000)
-mape=mean(abs(kr$residual)/kr$observed)
-mape
 
-mod3_1 <- as.vgm.variomodel(mod3)
-kr <- krige.cv(prec ~x+y+I(x*y)+I(x^2) , datossp,  mod3_1, maxdist = 125000)
-mape=mean(abs(kr$residual)/kr$observed)
-mape
-###### Mejor modelo parece el primero, aunque tienen muy pocas diferencias con los demás
+# 5. Modelo Kriging Universal ####
+#****************************************************************************
 
-##################################################################
-############ 			Kriging universal			##############
-##################################################################
-
-cundinamarca = readShapePoly("./Cundinamarca/CUNDINAMARCA.shp")
-bogota_upr <- readShapePoly("./UPR/UPR.shp")
-bogota_loc <- readShapePoly("./localidades/localidades.shp")
-
-
-poligonos = polygons(bogota_loc)
-plot(poligonos)
-
-muestra = spsample(poligonos, n = 10000, "regular")
-muestra1 = data.frame(muestra)
+# Grafica de poligonos de Bogotá D.C.
+poligonos <- polygons(bogota)
+# Muestra de los pologonos
+muestra <- spsample(poligonos, n = 10000, "regular")
+# Paso a data frame
+muestra1 <- data.frame(muestra)
 names(muestra1) = c("x", "y")
 gridded(muestra1) = c("x", "y")
 plot(muestra)
+# Para cuadricular la muestra generada! porque se ha generado de forma regular
 
-#Para cuadricular la muestra generada! porque se ha generado de forma regular
-krig_u=krige(formula = Aportes_total ~ X+Y+I(X*Y)+I(X^2),BD_2017,muestra1)
-
-#kriging universal sobre la precipitación.
+#kriging universal sobre los aportes.
+krig_u <- krige(formula=Aportes_total ~ X+Y+I(X*Y)+I(X^2), datossp, muestra1, model=mod1_1)
 head(krig_u$var1.pred)
 head(krig_u$var1.var)
 
-#Mapa para la precipitación
-spplot(krig_u, c("var1.pred"), main = "Kriging Universal para la precipitación", contour = T, labels = T, pretty = TRUE, col = "black", col.regions = terrain.colors(100))
+# Mapa para los aportes
+spplot(krig_u, c("var1.pred"), main = "Kriging Universal para los aportes", contour = T, 
+       labels = T, pretty = TRUE, col = "black", col.regions = terrain.colors(100))
 
-#Con algunas opciones distintas
-spplot(krig_u, c("var1.pred"), main = "Kriging Universal para la precipitación", contour = FALSE, labels = FALSE, pretty = F, col = "black", col.regions = terrain.colors(100))
-spplot(krig_u, c("var1.var"), main = "Mapa para las varianzas de predicción", contour = FALSE, labels = FALSE, pretty = TRUE, col = "black", col.regions = terrain.colors(100))
-
+# Con algunas opciones distintas
+spplot(krig_u, c("var1.pred"), main = "Kriging Universal para los aportes", contour = FALSE, 
+       labels = FALSE, pretty = F, col = "black", col.regions = terrain.colors(100))
+spplot(krig_u, c("var1.var"), main = "Mapa para las varianzas de predicción", contour = FALSE, 
+       labels = FALSE, pretty = TRUE, col = "black", col.regions = terrain.colors(100))
 
 #Para visualizar los puntos de las estaciones
-li = list("sp.polygons", cundinamarca)
+li = list("sp.polygons", bogota)
 pts = list("sp.points", datossp, pch = 3, col = "black", cex = 0.2)
-spplot(krig_u, c("var1.pred"), main = "Kriging Universal para la precipitación", sp.layout = list(li, pts), contour = FALSE, labels = FALSE, pretty = TRUE, col = "black", col.regions = terrain.colors(100))
+spplot(krig_u, c("var1.pred"), main = "Kriging Universal para los aportes", sp.layout = list(li, pts), 
+       contour = FALSE, labels = FALSE, pretty = TRUE, col = "black", col.regions = terrain.colors(100))
 
 
+# 6. Modelo Kriging ordinario
+#******************************************************************************
 
+krig_ord <- krige(formula = Aportes_total ~ 1, datossp, muestra1, model=mod1_1)
 
+#Mapa para la precipitación
+spplot(krig_ord, c("var1.pred"), main = "Kriging Ordinario para los aportes", contour = FALSE, 
+       labels = FALSE, pretty = TRUE, col = "black", col.regions = terrain.colors(100))
+spplot(krig_ord, c("var1.var"), main = "Mapa para las varianzas de predicción", contour = FALSE, 
+       labels = FALSE, pretty = TRUE, col = "black", col.regions = terrain.colors(100))
+
+#Para visualizar los puntos de las estaciones
+li = list("sp.polygons", bogota)
+pts = list("sp.points", datossp, pch = 3, col = "black", cex = 0.2)
+spplot(krig_ord, c("var1.pred"), main = "Kriging ordinario para la precipitación", sp.layout = list(li, pts), 
+       contour = FALSE, labels = FALSE, pretty = TRUE, col = "black", col.regions = terrain.colors(100))
 
 
 
