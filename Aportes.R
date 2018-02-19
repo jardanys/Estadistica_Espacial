@@ -164,7 +164,7 @@ title(main=list("Gráficos descriptivos para los Aportes", cex=2,col="black", fo
 # Como hay atipico, podría usarse una transformación box cox para reducir su efecto en los resultados y análisis
 
 # el gráfico para determinar estacionariedad. Aquí NO Estacionaria porque los punticos no están formados aleatoriamente
-datossp <- (BD_2017)
+datossp <- BD_2017[,c("X","Y","Aportes_total")]
 coordinates(datossp) = ~X+Y
 spplot(datossp, "Aportes_total", cuts = limites)
 #Existe dependencia espacial!!!! porque los puntos de valores similares "estan cerca"...
@@ -278,11 +278,12 @@ mod1_1 <- as.vgm.variomodel(mod1)
 class(mod1)
 class(mod1_1)
 
-kr <- krige.cv(Aportes_total ~ X+Y+I(X*Y)+I(X^2) , datossp, mod1_1, maxdist = 100)
+kr <- krige.cv(Aportes_total ~ X+Y+I(X*Y)+I(Y^2) , datossp, mod1_1, maxdist = 100)
 head(kr)
-mape=mean(abs(kr$residual)/kr$observed)
+mape <- mean(abs(kr$residual)/kr$observed)
 mape
-
+head(datossp)
+class(datossp)
 
 # 5. Modelo Kriging Universal ####
 #****************************************************************************
@@ -293,15 +294,17 @@ poligonos <- polygons(bogota)
 muestra <- spsample(poligonos, n = 10000, "regular")
 # Paso a data frame
 muestra1 <- data.frame(muestra)
-names(muestra1) = c("x", "y")
-gridded(muestra1) = c("x", "y")
+names(muestra1) = c("X", "Y")
+gridded(muestra1) = c("X", "Y")
 plot(muestra)
 # Para cuadricular la muestra generada! porque se ha generado de forma regular
 
 #kriging universal sobre los aportes.
-krig_u <- krige(formula=Aportes_total ~ X+Y+I(X*Y)+I(X^2), datossp, muestra1, model=mod1_1)
-head(krig_u$var1.pred)
-head(krig_u$var1.var)
+krig_u <- krige(formula = Aportes_total ~ X+Y+I(X*Y)+I(Y^2), datossp, muestra1, model=mod1_1)
+head(datossp)
+head(muestra1)
+head(mod1_1)
+summary(mod1_1)
 
 # Mapa para los aportes
 spplot(krig_u, c("var1.pred"), main = "Kriging Universal para los aportes", contour = T, 
