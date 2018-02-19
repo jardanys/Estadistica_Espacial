@@ -301,10 +301,6 @@ plot(muestra)
 
 #kriging universal sobre los aportes.
 krig_u <- krige(formula = Aportes_total ~ X+Y+I(X*Y)+I(Y^2), datossp, muestra1, model=mod1_1)
-head(datossp)
-head(muestra1)
-head(mod1_1)
-summary(mod1_1)
 
 # Mapa para los aportes
 spplot(krig_u, c("var1.pred"), main = "Kriging Universal para los aportes", contour = T, 
