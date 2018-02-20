@@ -64,9 +64,50 @@ BD_2017 <- BD %>%
            select(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y, Aportes, Afiliados) %>%
            group_by(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y) %>%
            summarise(Aportes_total = sum(Aportes, na.rm=T), Afiliados_max = max(Afiliados, na.rm=T)) %>% 
-           filter(ZONA == "ZONA CENTRO" | ZONA == "ZONA NORTE" | ZONA == "ZONA CHAPINERO" | ZONA == "ZONA SUR")
+           filter(ZONA == "ZONA CENTRO" | ZONA == "ZONA NORTE" | ZONA == "ZONA CHAPINERO" | ZONA == "ZONA SUR") %>%
+           filter(Aportes_total > 0)
+
+
 
 BD_2017$Y <- ifelse(BD_2017$Y>1000000, 4.7316250, BD_2017$Y)
+
+## 1.1. Exploración datos ####
+#*********************************************
+
+hist(BD_2017$Aportes_total) #Distribución no simétrica, sesgada hacia la derecha
+
+summary(BD_2017$Aportes_total) # media mayor a la mediana (sesgada hacia la derecha, distribución no-normal)
+
+#Al ser una distribución no simétrica, se aplica logaritmo para transformar
+#los valores y obtener una distribución simetrica (normal). 
+#Esto, además, reduce los posibles outliers.
+
+BD_2017$Aportes_log <- log10(BD_2017$Aportes_total)
+BD_2017$Aportes_log <- ifelse(BD_2017$Aportes_total<=0,0,BD_2017$Aportes_log)
+hist(BD_2017$Aportes_log, breaks = 16)
+
+summary(BD_2017$Aportes_total) # No se observa un sesgo tan alto y la distribución es más uniforme
+
+## 1.2. Estructura espacial ####
+#********************************************
+
+datos <- data.frame(BD_2017$X, BD_2017$Y, BD_2017$Aportes_log, BD_2017$Aportes_total)
+head(datos)
+colnames(datos)
+
+#Crear Spatial Data Frame
+coordinates(datos) <- c("BD_2017.X", "BD_2017.Y")
+class(datos)
+
+str(datos)
+
+plot(datos, asp = 1, pch = 1)
+plot(bogota)
+points(datos)
+
+plot(bogota)
+points(datos, asp = 1, cex = 4 * datos$BD_2017.Aportes_total/max(datos$BD_2017.Aportes_total),pch = 1) 
+
 
 # 2. Mapas ####
 #*********************************************
@@ -78,7 +119,6 @@ xy = SpatialPoints(BD_2017[c("X", "Y")])	# Puntos Empresas
 
 par(mfrow=c(1,1))
 plot(bogota)
-plot(xy)
 points(xy, pch = 3, cex = 0.3, col = "red")
 
 library(leaflet)
@@ -90,10 +130,10 @@ map
 
 #Análisis descriptivo para los aportes
 par(mfrow = c(1, 3))
-hist(BD_2017$Aportes_total, freq = FALSE, main = "", xlab = "Aportes", ylab = "Frecuencia")
-curve(dnorm(x, mean(BD_2017$Aportes_total), sd(BD_2017$Aportes_total)), add = T)
-boxplot(BD_2017$Aportes_total)
-qqPlot(BD_2017$Aportes_total, ylab = "Aportes")
+hist(BD_2017$Aportes_log, freq = FALSE, main = "", xlab = "Aportes", ylab = "Frecuencia")
+curve(dnorm(x, mean(BD_2017$Aportes_log), sd(BD_2017$Aportes_log)), add = T)
+boxplot(BD_2017$Aportes_log)
+qqPlot(BD_2017$Aportes_log, ylab = "Aportes")
 title(main=list("Gráficos descriptivos para los aportes", cex=2,col="black", font=3), outer=T,line=-2)
 par(mfrow=c(1,1))
 
@@ -127,24 +167,21 @@ sp2 = SpatialPoints(matriz)
 plot(sp2)
 #Generación de las coordenadas donde se va a interpolar
 muestra = spsample(sp2,n=100000, type="regular")
-plot(muestra)
+#plot(muestra)
 
-KC1=krige.control(cov.model="spherical",type="OK",cov.pars=c(23,846),nugget=0)
-resultado=krige.conv(geo,locations = data.frame(muestra),krige=KC1)
+#KC1 <- krige.control(cov.model="spherical",type="OK",cov.pars=c(23,846),nugget=0)
+#resultado <- krige.conv(geo,locations = data.frame(muestra),krige=KC1)
 
 #Grafico de la interpolacion
-image(resultado, main="Estimaciones por kriging",col=brewer.pal(9, "Blues"),axes=T,xlab="",ylab="")
-contour(resultado,add=T)
+#image(resultado, main="Estimaciones por kriging",col=brewer.pal(9, "Blues"),axes=T,xlab="",ylab="")
+#contour(resultado,add=T)
 
 ## Varianza de predicción, valores rojos son varianzas mas pequeñas que las amarillas
-image(resultado, val=sqrt(resultado$krige.var),axes =FALSE,xlab="",ylab="")
+#image(resultado, val=sqrt(resultado$krige.var),axes =FALSE,xlab="",ylab="")
 
 
 # 4. Aportes Bogotá D.C. - Geoestaditica ####
 #*******************************************************************
-
-bogota <- readShapePoly("./localidades/localidades_WGS84.shp")
-xy = SpatialPoints(BD_2017[c("X", "Y")])	#Puntos de las empresas
 
 ## 4.1. Graficas descriptivas ####
 #*******************************************************************
@@ -156,15 +193,16 @@ title(main="Empresas Aportes Bogota")
 
 #Análisis descriptivo para los aportes
 par(mfrow = c(1, 3))
-hist(BD_2017$Aportes_total, freq = FALSE, main = "", xlab = "Aportes", ylab = "Frecuencia")
-curve(dnorm(x, mean(BD_2017$Aportes_total), sd(BD_2017$Aportes_total)), add = T)
-boxplot(BD_2017$Aportes_total)
-qqPlot(BD_2017$Aportes_total, ylab = "Aportes")
+hist(BD_2017$Aportes_log, freq = FALSE, main = "", xlab = "Aportes", ylab = "Frecuencia")
+curve(dnorm(x, mean(BD_2017$Aportes_log), sd(BD_2017$Aportes_log)), add = T)
+boxplot(BD_2017$Aportes_log)
+qqPlot(BD_2017$Aportes_log, ylab = "Aportes")
 title(main=list("Gráficos descriptivos para los Aportes", cex=2,col="black", font=3), outer=T,line=-2)
+par(mfrow = c(1, 1))
 # Como hay atipico, podría usarse una transformación box cox para reducir su efecto en los resultados y análisis
 
 # el gráfico para determinar estacionariedad. Aquí NO Estacionaria porque los punticos no están formados aleatoriamente
-datossp <- BD_2017[,c("X","Y","Aportes_total")]
+datossp <- BD_2017[,c("X","Y","Aportes_total","Aportes_log")]
 coordinates(datossp) = ~X+Y
 spplot(datossp, "Aportes_total", cuts = limites)
 #Existe dependencia espacial!!!! porque los puntos de valores similares "estan cerca"...
@@ -175,8 +213,10 @@ spplot(datossp, "Aportes_total", cuts = limites)
 #************************************************************************
 
 # Gráficos contra las direcciones
-scatterplot(Aportes_total~X, reg.line=lm, smooth=TRUE, spread=TRUE, boxplots=FALSE, span=0.5, data=BD_2017)
-scatterplot(Aportes_total~Y, reg.line=lm, smooth=TRUE, spread=TRUE, boxplots=FALSE, span=0.5, data=BD_2017)
+scatterplot(Aportes_log~X, reg.line=lm, smooth=TRUE, spread=TRUE, boxplots=FALSE, span=0.5, data=BD_2017)
+scatterplot(Aportes_log~Y, reg.line=lm, smooth=TRUE, spread=TRUE, boxplots=FALSE, span=0.5, data=BD_2017)
+
+head(BD_2017[,c("Aportes_total","Aportes_log")], 1000)
 
 # Al parecer son constante pero existen varios puntos fuera
 
@@ -225,9 +265,10 @@ head(datos2)
 geo <- as.geodata(datos2, coords.col = 1:2, data.col = 3)
 
 # variog para estimar semivariograma
-var <- variog(geo, max.dist = 1000,direction = "omnidirectional")
+var <- variog(geo, max.dist = max(BD_2017$Aportes_total),direction = "omnidirectional")
 par(mfrow=c(1,1))
 plot(var)
+head(var)
 
 # Ajuste de modelos al semivariograma
 # Se puede con varios ajustes
