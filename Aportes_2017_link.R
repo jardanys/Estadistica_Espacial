@@ -13,11 +13,17 @@ load.lib("rgeos","sp","maptools","car","geoR","gstat","RColorBrewer")
 
 # 1. Cargue información ####
 #*********************************************
-tipos<-c("factor", "character", "character", "character", "character", "character", "numeric",
+tipos<-c("character", "character", "character", "character", "character", "character", "numeric",
          "numeric", "numeric", "numeric", "numeric", "numeric", "character", "character", "numeric", "numeric")
 
-BD <- read.csv("BD.txt", sep = "\t", header = T, dec = ",", colClasses=tipos)
+BD <- read.csv("BD.txt", sep = "\t", header = T, dec = ",", colClasses = tipos)
 str(BD)
+head(BD)
+
+colnames(BD) <- c("Id_Empresa", "RazonSocial", "FechaAfiliacion", "FechaRetiro", "Piramide.1", "Piramide.2_Actual", "AÑO", "MES", 
+  "Afiliados", "A", "B", "C", "ZONA", "Aportes", "X", "Y")
+
+colnames(BD)
 
 ## corrige aportes
 BD$Aportes <- str_replace(BD$Aportes, ",", ".")
@@ -66,7 +72,7 @@ BD_2017 <- BD %>%
   group_by(Id_Empresa, RazonSocial, Piramide.1, Piramide.2_Actual, ZONA, X, Y) %>%
   summarise(Aportes_total = sum(Aportes, na.rm=T), Afiliados_max = max(Afiliados, na.rm=T)) %>% 
   filter(ZONA == "ZONA CENTRO" | ZONA == "ZONA NORTE" | ZONA == "ZONA CHAPINERO" | ZONA == "ZONA SUR") %>%
-  filter(Piramide.2_Actual == "1.1 Platinum")
+  filter(Aportes_total > 0)
 
 table(BD_2017$Piramide.2_Actual)
 
@@ -77,7 +83,7 @@ head(BD_2017$Aportes_total)
 
 # 2. Mapas ####
 #*********************************************
-bogota = readShapePoly("./localidades/localidades_WGS84.shp")
+bogota = readShapePoly("./localidades1/localidades_WGS84.shp")
 xy = SpatialPoints(BD_2017[c("X", "Y")])	# Puntos Empresas
 
 # 3. Exploración datos ####
@@ -153,7 +159,7 @@ plot(ve, pl = T, model = va)
 # Grafica de poligonos de Bogotá D.C.
 poligonos <- polygons(bogota)
 # Muestra de los pologonos
-muestra <- spsample(poligonos, n = 100, "regular")
+muestra <- spsample(poligonos, n = 10000, "regular")
 # Paso a data frame
 muestra1 <- data.frame(muestra)
 names(muestra1) = c("X", "Y")
@@ -161,8 +167,13 @@ gridded(muestra1) = c("X", "Y")
 plot(muestra)
 plot(muestra1)
 
-ok <- krige(BD_2017.Aportes_log ~ 1, locations = datos, newdata = muestra1, model = va)
+?krige
+
+sum(ifelse(is.na(datos$BD_2017.Aportes_total),1,0))
+datos
+ok <- krige(BD_2017.Aportes_log ~ 1, datos, muestra1, model = va)
 head(ok)
+warnings()
 
 pts.s <- list("sp.points", datos, col="white",pch=1, cex=4*datos$BD_2017.Aportes_log/max(datos$BD_2017.Aportes_log))
 print(spplot(ok, "pred", asp=1, col.regions=rev(heat.colors(20)),
@@ -174,9 +185,49 @@ print(spplot(ok, zcol="var1.var",col.regions=rev(gray(seq(0,1,.01))), asp=1,
       split=c(2,1,2,1), more=FALSE)
 
 
+KC1 <- krige.control(cov.model="spherical",type="OK",cov.pars=c(0.1,0.55),nugget=0)
+
+mod1_1 = as.vgm.variomodel(KC1)
+KC1
+mod1_1
+
+class(mod1_1)
+class(KC1)
+
+krig_ord <- krige(formula=BD_2017.Aportes_total ~ 1,datos,muestra1,model=mod1_1)
 
 
+# 5. Otros metodos ####
+#************************************************************
+
+thiessen = krige(log10(BD_2017.Aportes_log) ~ 1, datos, muestra1, nmax = 4)
+pts.s <- list("sp.points", datos, col="white",pch=20)
+
+thiessen$var1.pred <- 10^(thiessen$var1.pred)
+
+thiessen
+
+spplot(thiessen, "var1.pred", asp=1, col.regions=rev(heat.colors(50)),
+       sp.layout = list(pts.s),main="Thiessen")
+
+spplot(thiessen, c("var1.pred"), main = "Kriging Universal para los aportes", 
+       contour = T, labels = T, pretty = TRUE, col = "black", col.regions = terrain.colors(100))
+
+spplot(thiessen, c("var1.pred"), main = "Kriging Universal para los aportes", contour = FALSE, labels = FALSE, 
+       pretty = F, col = "black", col.regions = terrain.colors(200))
+
+spplot(thiessen, c("var1.var"), main = "Mapa para las varianzas de predicción", contour = FALSE, labels = FALSE, 
+       pretty = TRUE, col = "black", col.regions = terrain.colors(200))
+
+thiessen = krige(BD_2017.Aportes_log ~ 1, datos, muestra1, nmax = 5)
+pts.s <- list("sp.points", datos, col="white",pch=20)
+
+spplot(thiessen, "var1.pred", asp=1, col.regions=rev(heat.colors(50)),
+       sp.layout = list(pts.s),main="Thiessen")
 
 
-
+li = list("sp.polygons", bogota)
+pts = list("sp.points", datos, pch = 3, col = "black", cex = 0.2)
+spplot(thiessen, c("var1.pred"), main = "Kriging Universal para los aportes", sp.layout = list(li, pts), 
+       contour = FALSE, labels = FALSE, pretty = TRUE, col = "black", col.regions = terrain.colors(100))
 
