@@ -230,4 +230,3 @@ li = list("sp.polygons", bogota)
 pts = list("sp.points", datos, pch = 3, col = "black", cex = 0.2)
 spplot(thiessen, c("var1.pred"), main = "Kriging Universal para los aportes", sp.layout = list(li, pts), 
        contour = FALSE, labels = FALSE, pretty = TRUE, col = "black", col.regions = terrain.colors(100))
-
