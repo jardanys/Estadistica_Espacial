@@ -14,9 +14,12 @@ load.lib("rgeos","sp","maptools","car","geoR","gstat","RColorBrewer")
 # 1. Cargue información ####
 #*********************************************
 tipos<-c("character", "character", "character", "character", "character", "character", "numeric",
-         "numeric", "numeric", "numeric", "numeric", "numeric", "character", "character", "numeric", "numeric")
+         "numeric", "numeric", "numeric", "numeric", "numeric", "character", "character", "character", 
+         "character")
 
-BD <- read.csv("BD.txt", sep = "\t", header = T, dec = ",", colClasses = tipos)
+## Cambiamos a lectura de la base. En esta nueva BD, las coordenadas vienen encerradas en comillas, así que
+## resulta necesario leerlas como caracter y luego pasar a número
+BD <- read.table("BD.txt", sep = "\t", header = T, dec = ",", colClasses = tipos, quote="\"")
 str(BD)
 head(BD)
 
@@ -29,6 +32,10 @@ colnames(BD)
 BD$Aportes <- str_replace(BD$Aportes, ",", ".")
 BD$Aportes <- str_replace(BD$Aportes, "\\$ ", "")
 BD$Aportes <- as.numeric(BD$Aportes)
+
+## Coerción de coordenadas a clase numérica. Se observa que hay coordenadas nulas
+BD$X <- as.numeric(str_replace(BD$X, ",", "."))
+BD$Y <- as.numeric(str_replace(BD$Y, ",", "."))
 
 BD_2014 <- BD %>% 
   filter( BD$AÑO == 2014 & BD$Piramide.2_Actual != "4.5 Transaccional"& 
@@ -89,9 +96,10 @@ xy = SpatialPoints(BD_2017[c("X", "Y")])	# Puntos Empresas
 # 3. Exploración datos ####
 #*********************************************
 
-hist(BD_2017$Aportes_total) #Distribución no simétrica, sesgada hacia la derecha
+#Distribución no simétrica, sesgada hacia la derecha
+hist(BD_2017$Aportes_total/1000000, breaks = 400, xlim = c(0, 1000), col="gray") 
 
-summary(BD_2017$Aportes_total) # media mayor a la mediana (sesgada hacia la derecha, distribución no-normal)
+summary(BD_2017$Aportes_total/1000000) # media mayor a la mediana (sesgada hacia la derecha, distribución no-normal)
 
 #Al ser una distribución no simétrica, se aplica logaritmo para transformar
 #los valores y obtener una distribución simetrica (normal). 
@@ -120,7 +128,8 @@ plot(bogota)
 points(datos)
 
 plot(bogota)
-points(datos, asp = 1, cex = 4 * datos$BD_2017.Aportes_total/max(datos$BD_2017.Aportes_total),pch = 1) 
+points(datos, asp = 1, cex = 4 * datos$BD_2017.Aportes_total/max(datos$BD_2017.Aportes_total),
+       pch = 1, col="green") 
 
 # calcule la distancia y semivarianza entre los dos puntos primeros puntos del dataset
 
@@ -171,6 +180,8 @@ plot(muestra1)
 
 sum(ifelse(is.na(datos$BD_2017.Aportes_total),1,0))
 datos
+
+## Como modelamos Kriging orinario la fórmula a usar es del tipo z~1.
 ok <- krige(BD_2017.Aportes_log ~ 1, datos, muestra1, model = va)
 head(ok)
 warnings()
@@ -184,8 +195,12 @@ print(spplot(ok, zcol="var1.var",col.regions=rev(gray(seq(0,1,.01))), asp=1,
              main="Varianza OK, log-ppm Zn^2",sp.layout = list(pts.s)), 
       split=c(2,1,2,1), more=FALSE)
 
-
-KC1 <- krige.control(cov.model="spherical",type="OK",cov.pars=c(0.1,0.55),nugget=0)
+## Se define modelo kriging ordinario con funcion de varianza con efecto pepita puro:
+## modelo pepita puro >> 'pure.nugget'
+## Kriging odinario type='ok'
+## nugget >> de acuerdo al gráfico está en aprox 0.55
+## REVISAR! >> Asumimos covarianza igual a 0 por lo del efecto pepita? >> si es así definimos 'cov.pars=c(0, 0)'
+KC1 <- krige.control(cov.model="pure.nugget", type="OK", cov.pars=c(0, 0), nugget=0.55)
 
 mod1_1 = as.vgm.variomodel(KC1)
 KC1
