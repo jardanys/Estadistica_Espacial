@@ -8,8 +8,7 @@ options(scipen=999)
 # 0. Cargue de librerías ####
 #*********************************************
 load.lib("dplyr", "scales", "tidyr", "plotly", "rgeos", "sp", "maptools", "car", "geoR", 
-         "gstat", "stringr", "reshape2")
-load.lib("rgeos","sp","maptools","car","geoR","gstat","RColorBrewer")
+         "gstat", "stringr", "reshape2", "rgeos","sp","maptools","car","geoR","gstat","RColorBrewer")
 
 # 1. Cargue información ####
 #*********************************************
@@ -90,7 +89,7 @@ head(BD_2017$Aportes_total)
 
 # 2. Mapas ####
 #*********************************************
-bogota = readShapePoly("./localidades1/localidades_WGS84.shp")
+bogota = readShapePoly("./barrios_SDP/barrios.shp")
 xy = SpatialPoints(BD_2017[c("X", "Y")])	# Puntos Empresas
 
 # 3. Exploración datos ####
@@ -106,7 +105,7 @@ summary(BD_2017$Aportes_total/1000000) # media mayor a la mediana (sesgada hacia
 #Esto, además, reduce los posibles outliers.
 
 BD_2017$Aportes_log <- log10(BD_2017$Aportes_total)
-hist(BD_2017$Aportes_log, breaks = 16)
+hist(BD_2017$Aportes_log, breaks = 16, col="gray")
 
 summary(BD_2017$Aportes_total) # No se observa un sesgo tan alto y la distribución es más uniforme
 
@@ -153,7 +152,9 @@ ve
 plot(ve)
 show.vgms()
 
-vt <- vgm(psill=0.02, model="Sph", range=0.55, nugget=0.55) 
+?vgm
+
+vt <- vgm(psill=0.02, model="Exp", range=0.55, nugget=0.55) 
 vt
 plot(ve, pl = T, model = vt)
 
@@ -175,8 +176,6 @@ names(muestra1) = c("X", "Y")
 gridded(muestra1) = c("X", "Y")
 plot(muestra)
 plot(muestra1)
-
-?krige
 
 sum(ifelse(is.na(datos$BD_2017.Aportes_total),1,0))
 datos
@@ -200,6 +199,7 @@ print(spplot(ok, zcol="var1.var",col.regions=rev(gray(seq(0,1,.01))), asp=1,
 ## Kriging odinario type='ok'
 ## nugget >> de acuerdo al gráfico está en aprox 0.55
 ## REVISAR! >> Asumimos covarianza igual a 0 por lo del efecto pepita? >> si es así definimos 'cov.pars=c(0, 0)'
+
 KC1 <- krige.control(cov.model="pure.nugget", type="OK", cov.pars=c(0, 0), nugget=0.55)
 
 mod1_1 = as.vgm.variomodel(KC1)
@@ -219,7 +219,6 @@ thiessen = krige(log10(BD_2017.Aportes_log) ~ 1, datos, muestra1, nmax = 4)
 pts.s <- list("sp.points", datos, col="white",pch=20)
 
 thiessen$var1.pred <- 10^(thiessen$var1.pred)
-
 thiessen
 
 spplot(thiessen, "var1.pred", asp=1, col.regions=rev(heat.colors(50)),
@@ -245,3 +244,4 @@ li = list("sp.polygons", bogota)
 pts = list("sp.points", datos, pch = 3, col = "black", cex = 0.2)
 spplot(thiessen, c("var1.pred"), main = "Kriging Universal para los aportes", sp.layout = list(li, pts), 
        contour = FALSE, labels = FALSE, pretty = TRUE, col = "black", col.regions = terrain.colors(100))
+
