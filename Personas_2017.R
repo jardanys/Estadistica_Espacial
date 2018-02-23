@@ -59,7 +59,7 @@ summary(Pers_2017$Y)
 #*********************************************
 
 # Capa de Bogotá sin localidad de sumapaz
-bogota = readShapePoly("./localidades1/localidades_WGS84.shp")
+bogota = readShapePoly("./localidades1/localidades_WGS84.shp") #readShapePoly("./barrios_SDP/barrios.shp")
 
 # Puntos de ubicación empresas
 xy = SpatialPoints(Pers_2017[c("X", "Y")])	
@@ -76,10 +76,10 @@ title(main="Ubicación empresas en Bogotá")
 
 # Análisis descriptivo para la cantidad de afiliados por empresa
 #par(mfrow = c(1, 3))
-hist(Pers_2017$Afiliados_max, freq = FALSE, main = "", breaks=200, col="gray", xlim=c(0, 2000),
+hist(Pers_2017$Afiliados_max, freq = T, main = "Histograma", breaks=200, col="gray", xlim=c(0, 2000),
      xlab = "Afiliados x empresa", ylab = "Frecuencia")
 
-hist(log(Pers_2017$Afiliados_max), freq = FALSE, main = "", breaks=50, col="gray", xlim=c(0, log(5000)),
+hist(log(Pers_2017$Afiliados_max), freq = T, main = "", breaks=50, col="gray", xlim=c(0, log(5000)),
      xlab = "log(Afiliados) x empresa", ylab = "Frecuencia")
 
 
@@ -91,7 +91,7 @@ qqPlot(log(Pers_2017$Afiliados_max), ylab = "log(Afiliados) x empresa")
 Pers_2017$Log_Afiliados <- log(Pers_2017$Afiliados_max)
 
 
-## El gráfico de sp no funciona!
+## El gráfico de sp 
 #************************************************************************************
 # creamos un vector de límites
 limites=c(min(Pers_2017$Log_Afiliados), quantile(Pers_2017$Log_Afiliados, probs = c(0.2, 0.4, 0.6, 0.8),type = 5), 
@@ -108,33 +108,135 @@ spplot(datossp, zcol="Log_Afiliados", cuts = limites)
 #************************************************************************************
 
 
-## 3. Análisis de estacionariedad
+## 3. Análisis de estacionariedad ####
 #*******************************************
 
 # Al parecer la media de el log de los afiliados es constante sobre las dos coordenadas en Bogota
 scatterplot(Log_Afiliados~X, reg.line=lm, smooth=TRUE, spread=TRUE, boxplots=FALSE, span=0.5, data=Pers_2017)
 scatterplot(Log_Afiliados~Y, reg.line=lm, smooth=TRUE, spread=TRUE, boxplots=FALSE, span=0.5, data=Pers_2017)
 
+# Se ajusta un modelo cuadrático para verificar si el proceso ES o NO estacionario.
+# Se observa que ningún término es significativo
+modelo1=lm(Log_Afiliados ~ X+Y+I(X^2)+I(Y^2)+I(X*Y), data=Pers_2017)
+anova(modelo1)
+
+# Ajustamos modelo con sólo variables de coordenadas.
+# Se concluye que el proceso es estacionario ya que los valores no dependen de las coordenadas
+modelo2=lm(Log_Afiliados ~ X+Y, data=Pers_2017)
+anova(modelo2)
+
+
+## 4. Análisis variograma ####
+#*******************************************
+
 # Creamos objeto geodata para semivariograma
-datos2 <- select(as.data.frame(Pers_2017), X, Y, Log_Afiliados)
-geo_afiliados = as.geodata(datos2, coords.col = 1:2, data.col = 3)
+data_afiliados <- select(as.data.frame(Pers_2017), X, Y, Log_Afiliados)
+geo_afiliados = as.geodata(data_afiliados, coords.col = 1:2, data.col = 3)
 
 # Estimación del variograma
-var = variog(geo_afiliados, direction = "omnidirectional")
+var = variog(geo_afiliados, direction = "omnidirectional", max.dist = 0.28)
+
+# Estimación variograma por lat y lon
+var_lat = variog(geo_afiliados, direction = 90, unit.angle="degre", width = 100)
+var_lon = variog(geo_afiliados, direction = 0, unit.angle="degre", width = 100)
+
+# graficamos los semivariogramas
+# Se observa que la variación no depende de la dirección
+plot(var,main="Semivariograma", xlim=c(0, 0.5), type="l", ylim=c(0,4))
+points(var_lat$u, var_lat$v, col=2, type="l")
+points(var_lon$u, var_lon$v, col=3, type="l")
+legend("bottomright",c("Omnidir","Latitud","Longitud"), col=1:3,pch=1, inset=0.03, box.lwd=0)
+
+#*********************************
+## Ajuste modelo semivariograma
+#*********************************
+
+## Dada la evidencia del semivariograma, el modelo es de apariencia pepita puro
+var_eyefit <- eyefit(var)
+var_eyefit
+
+## Definición manual del modelo pepita puro
+var_pepita <- vgm(1.8, "Nug", 0, nugget = 1.8)
+var_pepita
+
+#**********************
+# Estimamos parámetros
+#**********************
+
+#Asignando valores iniciales
+modelo3 <- variofit(var, ini=var_pepita, cov.model="pure.nugget", weights="equal")
+modelo3
+
+#Minimos cuadrados ponderados
+modelo4 <- variofit(var, ini=variofit, cov.model="pure.nugget", weights="npairs")
+modelo4
+
+#Minimos cuadrados ponderados
+modelo5 <- variofit(var, ini=variofit, cov.model="pure.nugget", weights="cressie")
+modelo5
+
+#Maxima verosimilitud
+modelo6 <- likfit(geo_afiliados, ini=variofit, cov.model="pure.nugget", lik.method="ML")
+modelo6
+
+#Maxima verosimilitud restringida
+modelo7 <- likfit(geo_afiliados, ini=variofit, cov.model="pure.nugget", lik.method="REML")
+modelo7
+
+
+#**********************
+# Comparamos modelos
+#**********************
 plot(var)
+lines(modelo3, max.dist = 800, col = 1)
+lines(modelo4, max.dist = 800, col = 2)
+lines(modelo5, max.dist = 800, col = 3)
+lines(modelo6, max.dist = 800, col = 4)
+lines(modelo7, max.dist = 800, col = 5)
+legend("bottomright",legend = c("OLS", "WLS - npairs", "WLS - cressie", "ML", "REML"),col = 1:5, lwd = 2, inset = .03)
+
+
+## 5. Validación cruzada ####
+#*******************************************
+# Se realiza validación cruzada para el modelo del variograma sobre el log(Afiliados)
+# Como se realiza sobre los datos directamente, se cambia objeto del modelo
+require(gstat)
+modelo3_vgm <- as.vgm.variomodel(modelo3)
+class(modelo3)
+class(modelo3_vgm)
+
+# aplicamos krige con validación cruzada ya sobre los datos originales
+krig_ord1 <- krige.cv(Log_Afiliados ~ 1 , datossp, modelo3_vgm, maxdist = 0.28)
+head(krig_ord1)
+mape <- mean(abs(krig_ord1$residual)/krig_ord1$observed, na.rm = T)
+mape # (error medio porc absoluto) Medida bastante mala, erro del pronóstico de cerca del 30%
+
+#Se repite el proceso para los otros modelos candidatos...
+
+9.03
 
 
 
 
+## 6. Mapa resultados
+#***************************************************
 
+#Mapa para la precipitación
+# cambia mapa respecto a precipitación
+spplot(krig_ord1, c("var1.pred"), main = "Kriging Ordinario - Afiliados Bogotá", contour = FALSE, 
+       labels = FALSE, pretty = TRUE, col = "black", col.regions = terrain.colors(100))
+# cambia el mapa con respecto  a las vars de predicción
+spplot(krig_ord1, c("var1.var"), main = "Mapa para las varianzas de predicción", contour = FALSE, 
+       labels = FALSE, pretty = TRUE, col = "black", col.regions = terrain.colors(100))
 
+## EL KRILIN ORDINARIO PAILA!!!!
 
-
-
-
-
-
-
+#Para visualizar los puntos de las estaciones
+li = list("sp.polygons", bogota)
+pts = list("sp.points", datossp, pch = 3, col = "black", cex = 0.2)
+spplot(krig_ord1, c("var1.pred"), main = "Kriging Ordinario - Afiliados Bogotá", 
+       sp.layout = list(li, pts), contour = FALSE, labels = FALSE, pretty = TRUE, col = "black", 
+       col.regions = terrain.colors(100))
 
 
 
