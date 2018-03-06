@@ -149,9 +149,9 @@ BD_2017$D_Aportes_99 <- ifelse(BD_2017$Aportes_total > quantile(BD_2017$Aportes_
 
 head(BD_2017)
 
-# BD_2017sp <- BD_2017
-# coordinates(BD_2017sp) = ~X+Y
-# spplot(BD_2017sp, "Aportes", cuts = limites)
+BD_2017sp <- BD_2017
+coordinates(BD_2017sp) = ~X+Y
+spplot(BD_2017sp, "Aportes_total", cuts = limites)
 
 
 ## 3.1 Interpolación áreas - prueba ####
